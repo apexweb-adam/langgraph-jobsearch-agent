@@ -11,3 +11,7 @@ data/*.docx
 *.egg-info/
 build/
 dist/
+dashboard/node_modules/
+dashboard/.next/
+dashboard/.env.local
+dashboard/.vercel

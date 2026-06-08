@@ -1,77 +1,108 @@
-# Example profile. Copy to data/profile.yaml and edit, OR generate from a real
-# CV with:  python -m src.profile.parser <cv.pdf> [cover_letter.pdf]
-#
-# Everything here is editable. The downstream scoring agent reads this on every
-# run, so a single edit propagates immediately.
+# Example profile, structured for a nonprofit Program Director search.
+# Copy to data/profile.yaml and edit. The profile parser can pre-fill most of
+# this from your CV with:
+#   python -m src.profile.parser <cv.pdf> [cover_letter.pdf]
 
 name: "Jane Doe"
 email: "jane@example.com"
 
 target_titles:
-  - "Senior Software Engineer"
-  - "Staff Engineer"
-  - "Backend Engineer"
-  - "Platform Engineer"
+  - "National Program Director"
+  - "Program Director"
+  - "VP, Community Impact"
+  - "Director of Volunteer Engagement"
+  - "VP, Programs"
 
-# These are HARD rejects. Any posting whose title contains one of these strings
-# gets dropped to score=0 with no Gemini call.
+# Hard rejects: any title containing one of these gets score=0 with no LLM call.
+# Save your API budget by being thorough here.
 reject_titles:
+  - "Program coordinator"
+  - "Director of Development"
+  - "VP of Development"
+  - "Program manager"
+  - "Event Director"
   - "intern"
-  - "internship"
-  - "manager"
-  - "director"
-  - "sales"
-  - "marketing"
-  - "executive assistant"
+  - "fellowship"
 
 skills:
-  - "Python"
-  - "TypeScript"
-  - "PostgreSQL"
-  - "AWS"
-  - "Kubernetes"
-  - "distributed systems"
-  - "system design"
-  - "API design"
-  - "Kafka"
-  - "Docker"
+  - "grant management"
+  - "program design and development"
+  - "program delivery and implementation"
+  - "grants administration"
+  - "relationship management"
+  - "account management"
+  - "program operations"
+  - "volunteer management"
+  - "volunteer engagement"
+  - "strategy development"
+  - "budget development and management"
+  - "communications strategy"
 
 preferred_industries:
-  - "developer tools"
-  - "AI / ML"
-  - "fintech"
-  - "SaaS"
+  - "nonprofit"
+  - "nonprofit management"
+  - "foundations"
+  - "healthcare"
+  - "community health"
 
 rejected_industries:
-  - "defense"
-  - "gambling"
+  - "IT"
+  - "finance"
+  - "clinical healthcare"
+  - "government"
+  - "education"
 
 remote_only: true
-geos: ["US", "EU", "remote"]
-timezones: ["PT", "ET", "UTC", "CET"]
+geos: ["US remote", "Atlanta GA"]
+timezones: ["all US"]
 
 salary_floor:
-  amount: 160000
+  amount: 125000
   currency: "USD"
   period: "yearly"
 
-seniority: ["senior", "staff"]
-company_size: ["seed", "series-a", "series-b", "series-c"]
+seniority:
+  - "Senior Manager"
+  - "Director"
+  - "Vice President"
+  - "Senior Lead"
+  - "Executive Lead"
+company_size: []
 
-# These are what the discovery node hits.
-# Greenhouse token: from https://boards.greenhouse.io/<token>
-# Lever slug:       from https://jobs.lever.co/<slug>
+# Hard company-level rejects, checked in scoring before any LLM call.
+# (Wire these via post_filter or by adding the company name to reject_titles
+# if it shows up in the JD.)
+reject_companies:
+  - "American Red Cross"
+  - "federal government"
+  - "local government"
+
 target_companies:
   greenhouse:
-    - "anthropic"
-    - "replicate"
-    - "vercel"
-    - "supabase"
-    - "anduril"
-  lever:
-    - "cresta"
-    - "matterport"
-    - "wealthsimple"
+    - "givedirectly"
+  lever: []
+  jazzhr: []        # add subdomains as you discover them
+  apify:
+    # Indeed broad search across the US, scoped to the target titles.
+    # The misceres/indeed-scraper is a popular community Actor on Apify Store.
+    - actor_id: "misceres/indeed-scraper"
+      label: "indeed-program-director"
+      input:
+        position: "Program Director"
+        country: "US"
+        maxItems: 50
+      mapping:
+        title: "positionName"
+        company: "company"
+        location: "location"
+        url: "url"
+        description: "description"
+    # Example for any JS-rendered ATS (Paylocity, ADP, iCIMS) via the generic
+    # web scraper. Add per-company configs as you confirm their boards.
+    # - actor_id: "apify/web-scraper"
+    #   label: "lung-association-paylocity"
+    #   input: { ... }
+    #   mapping: { title: "title", company: "company", url: "url", ... }
 
 resume_text: ""
 cover_letter_text: ""

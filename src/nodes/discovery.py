@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 
 from ..state import GraphState, Job
-from ..sources import greenhouse, lever
+from ..sources import greenhouse, lever, jazzhr, apify
 
 
 def _dedupe(jobs: list[Job]) -> list[Job]:
@@ -24,17 +24,32 @@ def _dedupe(jobs: list[Job]) -> list[Job]:
 
 
 async def _fetch_all(profile) -> list[Job]:
-    gh_task = greenhouse.fetch_all(profile.target_companies.greenhouse)
-    lv_task = lever.fetch_all(profile.target_companies.lever)
-    gh_jobs, lv_jobs = await asyncio.gather(gh_task, lv_task)
-    return gh_jobs + lv_jobs
+    tc = profile.target_companies
+    # Each source is independent: fan out concurrently, await all.
+    apify_inputs = [s.model_dump() for s in tc.apify]
+    results = await asyncio.gather(
+        greenhouse.fetch_all(tc.greenhouse),
+        lever.fetch_all(tc.lever),
+        jazzhr.fetch_all(tc.jazzhr),
+        apify.fetch_all(apify_inputs),
+        return_exceptions=True,
+    )
+    out: list[Job] = []
+    for name, r in zip(("greenhouse", "lever", "jazzhr", "apify"), results):
+        if isinstance(r, Exception):
+            print(f"  [discovery] {name} crashed: {r}")
+            continue
+        print(f"  [discovery] {name}: {len(r)} jobs")
+        out.extend(r)
+    return out
 
 
 def discovery_node(state: GraphState) -> GraphState:
     profile = state["profile"]
+    tc = profile.target_companies
     print(
-        f"  [discovery] greenhouse={len(profile.target_companies.greenhouse)} "
-        f"lever={len(profile.target_companies.lever)} boards"
+        f"  [discovery] greenhouse={len(tc.greenhouse)} lever={len(tc.lever)} "
+        f"jazzhr={len(tc.jazzhr)} apify={len(tc.apify)}"
     )
     jobs = asyncio.run(_fetch_all(profile))
     deduped = _dedupe(jobs)

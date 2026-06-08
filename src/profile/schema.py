@@ -5,14 +5,35 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class ApifySource(BaseModel):
+    """One Apify Actor configuration. Used for any ATS we can't hit natively
+    (Paylocity, ADP, Indeed, custom React careers pages).
+
+    actor_id: the Actor's "<author>/<name>" path on Apify Store.
+    label:    short identifier surfaced in transcripts and the dashboard.
+    input:    the Actor's run-input dict, passed straight to the API.
+    mapping:  how to map raw item fields to our Job model. Each value can be a
+              dotted path into a nested dict.
+    """
+    actor_id: str
+    label: str
+    input: dict = Field(default_factory=dict)
+    mapping: dict[str, str] = Field(default_factory=dict)
+
+
 class TargetCompanies(BaseModel):
     """Companies to watch per ATS. The token is what appears in the board URL.
 
     Greenhouse: https://boards.greenhouse.io/<token>      -> use <token>
     Lever:      https://jobs.lever.co/<company_slug>      -> use <company_slug>
+    JazzHR:     https://<subdomain>.applytojob.com        -> use <subdomain>
+
+    Apify sources cover anything JS-rendered (Paylocity, ADP, iCIMS, Indeed).
     """
     greenhouse: list[str] = Field(default_factory=list)
     lever: list[str] = Field(default_factory=list)
+    jazzhr: list[str] = Field(default_factory=list)
+    apify: list[ApifySource] = Field(default_factory=list)
 
 
 class SalaryFloor(BaseModel):
