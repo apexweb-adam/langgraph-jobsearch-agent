@@ -3,7 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
-// Read-only client used in pages. RLS allows public SELECT on jobs.
+// Table name is configurable so the same dashboard works against a shared DB
+// (langgraph_jobs) or a dedicated client DB (jobs). Default matches the runner.
+export const TABLE =
+  process.env.NEXT_PUBLIC_SUPABASE_TABLE || "langgraph_jobs";
+
+// Read-only client used in pages. RLS allows public SELECT on the jobs table.
 export const supabase = createClient(url, anon, {
   auth: { persistSession: false },
 });

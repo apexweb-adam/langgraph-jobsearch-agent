@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase, Job } from "@/lib/supabase";
+import { supabase, TABLE, Job } from "@/lib/supabase";
 
 type Filter = "new" | "all" | "applied" | "snoozed";
 
@@ -20,7 +20,7 @@ export default function Page() {
   async function load() {
     setLoading(true);
     let q = supabase
-      .from("jobs")
+      .from(TABLE)
       .select("*")
       .eq("hard_rejected", false)
       .order("score", { ascending: false })

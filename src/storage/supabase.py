@@ -65,6 +65,9 @@ class SupabaseStore:
             "SUPABASE_SERVICE_ROLE_KEY",
             os.environ.get("SUPABASE_KEY", ""),
         )
+        # Table name is configurable so the same code can target a shared DB
+        # (default "langgraph_jobs") or a dedicated client DB (default "jobs").
+        self.table = os.environ.get("SUPABASE_TABLE", "langgraph_jobs")
         self.enabled = bool(self.url and self.key)
         if self.enabled:
             self._client = httpx.Client(
@@ -102,7 +105,7 @@ class SupabaseStore:
         ]
         try:
             r = self._client.post(
-                "/jobs", content=json.dumps(rows),
+                f"/{self.table}", content=json.dumps(rows),
                 params={"on_conflict": "canonical_url"},
             )
             r.raise_for_status()

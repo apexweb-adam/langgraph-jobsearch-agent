@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { serverClient } from "@/lib/supabase";
+import { serverClient, TABLE } from "@/lib/supabase";
 
 const VALID = new Set(["applied", "snoozed", "rejected"]);
 
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   }
   const client = serverClient();
   const { error } = await client
-    .from("jobs")
+    .from(TABLE)
     .update({ user_decision: decision })
     .eq("canonical_url", url);
   if (error) {
