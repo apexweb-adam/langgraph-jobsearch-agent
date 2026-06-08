@@ -1,0 +1,77 @@
+# Example profile. Copy to data/profile.yaml and edit, OR generate from a real
+# CV with:  python -m src.profile.parser <cv.pdf> [cover_letter.pdf]
+#
+# Everything here is editable. The downstream scoring agent reads this on every
+# run, so a single edit propagates immediately.
+
+name: "Jane Doe"
+email: "jane@example.com"
+
+target_titles:
+  - "Senior Software Engineer"
+  - "Staff Engineer"
+  - "Backend Engineer"
+  - "Platform Engineer"
+
+# These are HARD rejects. Any posting whose title contains one of these strings
+# gets dropped to score=0 with no Gemini call.
+reject_titles:
+  - "intern"
+  - "internship"
+  - "manager"
+  - "director"
+  - "sales"
+  - "marketing"
+  - "executive assistant"
+
+skills:
+  - "Python"
+  - "TypeScript"
+  - "PostgreSQL"
+  - "AWS"
+  - "Kubernetes"
+  - "distributed systems"
+  - "system design"
+  - "API design"
+  - "Kafka"
+  - "Docker"
+
+preferred_industries:
+  - "developer tools"
+  - "AI / ML"
+  - "fintech"
+  - "SaaS"
+
+rejected_industries:
+  - "defense"
+  - "gambling"
+
+remote_only: true
+geos: ["US", "EU", "remote"]
+timezones: ["PT", "ET", "UTC", "CET"]
+
+salary_floor:
+  amount: 160000
+  currency: "USD"
+  period: "yearly"
+
+seniority: ["senior", "staff"]
+company_size: ["seed", "series-a", "series-b", "series-c"]
+
+# These are what the discovery node hits.
+# Greenhouse token: from https://boards.greenhouse.io/<token>
+# Lever slug:       from https://jobs.lever.co/<slug>
+target_companies:
+  greenhouse:
+    - "anthropic"
+    - "replicate"
+    - "vercel"
+    - "supabase"
+    - "anduril"
+  lever:
+    - "cresta"
+    - "matterport"
+    - "wealthsimple"
+
+resume_text: ""
+cover_letter_text: ""
