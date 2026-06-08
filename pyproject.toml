@@ -1,7 +1,7 @@
 [project]
-name = "berniesbaby-jobsearch"
+name = "langgraph-jobsearch-agent"
 version = "0.1.0"
-description = "LangGraph-orchestrated job discovery + scoring + HITL approval for berniesbaby"
+description = "LangGraph-orchestrated job discovery, AI scoring, and human-in-the-loop approval agent"
 requires-python = ">=3.11"
 dependencies = [
     "langgraph>=0.2.50",

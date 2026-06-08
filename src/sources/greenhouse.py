@@ -55,7 +55,7 @@ async def fetch_company(client: httpx.AsyncClient, board_token: str) -> list[Job
 async def fetch_all(board_tokens: list[str]) -> list[Job]:
     if not board_tokens:
         return []
-    async with httpx.AsyncClient(headers={"User-Agent": "berniesbaby-jobsearch/0.1"}) as c:
+    async with httpx.AsyncClient(headers={"User-Agent": "langgraph-jobsearch-agent/0.1"}) as c:
         results: list[Job] = []
         for token in board_tokens:
             results.extend(await fetch_company(c, token))
