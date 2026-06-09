@@ -54,25 +54,73 @@ async def run_actor(
     token: str,
     actor_id: str,
     actor_input: dict,
-    timeout_s: int = 240,
+    poll_timeout_s: int = 900,    # hard cap: don't wait more than 15 min per actor
+    poll_interval_s: int = 5,
 ) -> list[dict]:
-    """Start the Actor in run-sync mode (blocks until it finishes or times out)
-    and return the dataset items.
+    """Start the Actor asynchronously, poll until terminal state, then read
+    the run's default dataset.
 
-    We use the run-sync-get-dataset-items endpoint so we don't have to poll.
-    Apify caps run-sync at 5 minutes which is fine for our use case.
+    Why not run-sync-get-dataset-items: that endpoint has a 5-minute hard
+    ceiling. Indeed scraping with detail-page fetching for ~30-50 items
+    routinely exceeds 5 minutes (residential proxy + headless Chromium is
+    slow). Async + poll has no time limit beyond what we set here.
     """
     actor_path = actor_id.replace("/", "~")
-    url = f"{APIFY_BASE}/acts/{actor_path}/run-sync-get-dataset-items"
-    params = {"token": token, "timeout": timeout_s, "format": "json"}
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1) start the run
     try:
-        r = await client.post(url, params=params, json=actor_input, timeout=timeout_s + 30)
+        r = await client.post(
+            f"{APIFY_BASE}/acts/{actor_path}/runs",
+            headers=headers, json=actor_input, timeout=30,
+        )
+        r.raise_for_status()
+        run = r.json().get("data", {})
+        run_id = run.get("id")
+        if not run_id:
+            print(f"  [apify] {actor_id}: start succeeded but no runId in response")
+            return []
+    except Exception as e:
+        print(f"  [apify] {actor_id}: start failed: {e}")
+        return []
+
+    # 2) poll until terminal state
+    import asyncio
+    elapsed = 0
+    final_status = None
+    while elapsed < poll_timeout_s:
+        try:
+            r = await client.get(
+                f"{APIFY_BASE}/actor-runs/{run_id}",
+                headers=headers, timeout=15,
+            )
+            r.raise_for_status()
+            data = r.json().get("data", {})
+            status = data.get("status")
+            if status in ("SUCCEEDED", "FAILED", "TIMED-OUT", "ABORTED"):
+                final_status = status
+                break
+        except Exception as e:
+            print(f"  [apify] {actor_id}: poll error: {e} (continuing)")
+        await asyncio.sleep(poll_interval_s)
+        elapsed += poll_interval_s
+
+    if final_status != "SUCCEEDED":
+        print(f"  [apify] {actor_id}: run {run_id} ended with {final_status or 'TIMEOUT_WAITING'}")
+        # Even on partial-success runs the dataset may have rows; try to fetch.
+
+    # 3) fetch the run's default dataset
+    try:
+        r = await client.get(
+            f"{APIFY_BASE}/actor-runs/{run_id}/dataset/items",
+            headers=headers, params={"format": "json", "clean": "true"}, timeout=60,
+        )
         r.raise_for_status()
         items = r.json()
         if isinstance(items, list):
             return items
     except Exception as e:
-        print(f"  [apify] actor {actor_id} failed: {e}")
+        print(f"  [apify] {actor_id}: dataset fetch failed: {e}")
     return []
 
 
