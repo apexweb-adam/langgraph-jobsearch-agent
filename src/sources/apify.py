@@ -181,8 +181,19 @@ async def fetch_all(apify_sources: list[dict]) -> list[Job]:
                     out.append(j)
             return out
 
+        # Wrap each actor call in asyncio.wait_for so a hung Apify run
+        # can't pin the rest of the pipeline. 18 minutes covers the 15-min
+        # poll cap plus dataset fetch overhead; anything still alive at
+        # that point gets cancelled and we move on with what we have.
+        async def _bounded(src: dict) -> list[Job]:
+            try:
+                return await asyncio.wait_for(_one(src), timeout=18 * 60)
+            except asyncio.TimeoutError:
+                print(f"  [apify] {src.get('label')}: hit 18min hard ceiling, skipping")
+                return []
+
         groups = await asyncio.gather(
-            *[_one(src) for src in apify_sources],
+            *[_bounded(src) for src in apify_sources],
             return_exceptions=True,
         )
         results: list[Job] = []
