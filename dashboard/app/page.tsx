@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase, TABLE, Job } from "@/lib/supabase";
 
 type Filter = "new" | "all" | "applied" | "snoozed";
+type Band = "all" | "great" | "good" | "maybe";
 
 function scoreClass(score: number): string {
   if (score >= 80) return "score high";
@@ -12,10 +13,28 @@ function scoreClass(score: number): string {
   return "score dim";
 }
 
+function timeAgo(iso: string | null): string {
+  if (!iso) return "never";
+  const ms = Date.now() - new Date(iso).getTime();
+  const min = Math.round(ms / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const d = Math.round(hr / 24);
+  return `${d}d ago`;
+}
+
+const CANDIDATE = process.env.NEXT_PUBLIC_CANDIDATE_NAME || "your";
+
 export default function Page() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filter, setFilter] = useState<Filter>("new");
+  const [band, setBand] = useState<Band>("all");
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [tailoring, setTailoring] = useState<string | null>(null);
+  const [tailorOut, setTailorOut] = useState<string>("");
 
   async function load() {
     setLoading(true);
@@ -24,7 +43,7 @@ export default function Page() {
       .select("*")
       .eq("hard_rejected", false)
       .order("score", { ascending: false })
-      .limit(200);
+      .limit(500);
     if (filter === "new") {
       q = q.is("user_decision", null).gte("score", 50);
     } else if (filter === "applied") {
@@ -53,79 +72,239 @@ export default function Page() {
     }
   }
 
+  async function tailor(j: Job) {
+    setTailoring(j.canonical_url);
+    setTailorOut("Generating a tailored cover letter — about 10 seconds…");
+    try {
+      const res = await fetch("/api/tailor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: j.title,
+          company: j.company,
+          description: j.description ?? "",
+        }),
+      });
+      const j2 = await res.json();
+      setTailorOut(j2.text || j2.error || "Something went wrong.");
+    } catch (e) {
+      setTailorOut(String(e));
+    }
+  }
+
+  async function copyTailored() {
+    try {
+      await navigator.clipboard.writeText(tailorOut);
+    } catch {}
+  }
+
+  const filtered = useMemo(() => {
+    if (band === "all") return jobs;
+    if (band === "great") return jobs.filter((j) => j.score >= 80);
+    if (band === "good") return jobs.filter((j) => j.score >= 70 && j.score < 80);
+    return jobs.filter((j) => j.score >= 50 && j.score < 70);
+  }, [jobs, band]);
+
+  const counts = useMemo(() => {
+    return {
+      great: jobs.filter((j) => j.score >= 80).length,
+      good: jobs.filter((j) => j.score >= 70 && j.score < 80).length,
+      maybe: jobs.filter((j) => j.score >= 50 && j.score < 70).length,
+    };
+  }, [jobs]);
+
+  const lastRefresh = useMemo(() => {
+    const ts = jobs
+      .map((j) => j.last_scored_at)
+      .filter(Boolean)
+      .sort()
+      .pop();
+    return timeAgo(ts ?? null);
+  }, [jobs]);
+
   return (
     <div className="wrap">
-      <h1>Job matches</h1>
-      <div className="sub">
-        Scored against your profile. Click through to apply, then mark applied or snooze.
-      </div>
+      <header className="header">
+        <div>
+          <div className="brand">Job matches</div>
+          <h1>Curated for {CANDIDATE}</h1>
+          <div className="sub">
+            Scored against your background. Click a role to expand, draft a
+            tailored cover letter, then mark applied or snooze.
+          </div>
+        </div>
+        <div className="last">
+          <div className="chip">Last refresh: {lastRefresh}</div>
+          <div className="chip subtle">Next refresh: tomorrow 9 AM ET</div>
+        </div>
+      </header>
 
       <div className="controls">
         {(["new", "applied", "snoozed", "all"] as Filter[]).map((f) => (
           <button
             key={f}
             className={`btn ${filter === f ? "active" : ""}`}
-            onClick={() => setFilter(f)}
+            onClick={() => {
+              setFilter(f);
+              setBand("all");
+            }}
           >
             {f}
           </button>
         ))}
+        {filter === "new" && (
+          <div className="bands">
+            <button
+              className={`band ${band === "all" ? "active" : ""}`}
+              onClick={() => setBand("all")}
+            >
+              All ({counts.great + counts.good + counts.maybe})
+            </button>
+            <button
+              className={`band great ${band === "great" ? "active" : ""}`}
+              onClick={() => setBand("great")}
+            >
+              Great ≥80 ({counts.great})
+            </button>
+            <button
+              className={`band good ${band === "good" ? "active" : ""}`}
+              onClick={() => setBand("good")}
+            >
+              Good 70–79 ({counts.good})
+            </button>
+            <button
+              className={`band maybe ${band === "maybe" ? "active" : ""}`}
+              onClick={() => setBand("maybe")}
+            >
+              Maybe 50–69 ({counts.maybe})
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (
         <div className="empty">Loading…</div>
-      ) : jobs.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="empty">
-          No jobs in this view yet. The runner will fill this on its next pass.
+          <strong>No roles in this view yet.</strong>
+          <div style={{ marginTop: 6, fontSize: 13 }}>
+            The discovery agent refreshes once a day. New matches will appear
+            here automatically.
+          </div>
         </div>
       ) : (
-        jobs.map((j) => (
-          <div className="card" key={j.canonical_url}>
-            <div className="row">
-              <a className="title" href={j.canonical_url} target="_blank" rel="noreferrer">
-                {j.title}
-              </a>
-              <span className={scoreClass(j.score)}>{j.score}/100</span>
+        filtered.map((j) => {
+          const isOpen = !!expanded[j.canonical_url];
+          return (
+            <div className="card" key={j.canonical_url}>
+              <div className="row">
+                <a
+                  className="title"
+                  href={j.canonical_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {j.title}
+                </a>
+                <span className={scoreClass(j.score)}>{j.score}</span>
+              </div>
+              <div className="meta">
+                <strong>{j.company}</strong>
+                {j.location ? ` · ${j.location}` : ""}
+                <span className="src"> · {j.source}</span>
+              </div>
+              {j.fit_reasoning && <div className="reasoning">{j.fit_reasoning}</div>}
+              <div className="tags">
+                {j.strengths?.map((s, i) => (
+                  <span key={`s${i}`} className="tag fit">
+                    {s}
+                  </span>
+                ))}
+                {j.gaps?.map((g, i) => (
+                  <span key={`g${i}`} className="tag gap">
+                    {g}
+                  </span>
+                ))}
+              </div>
+
+              {j.description && (
+                <button
+                  className="expander"
+                  onClick={() =>
+                    setExpanded((e) => ({
+                      ...e,
+                      [j.canonical_url]: !isOpen,
+                    }))
+                  }
+                >
+                  {isOpen ? "Hide description ▴" : "Show full description ▾"}
+                </button>
+              )}
+              {isOpen && j.description && (
+                <pre className="description">{j.description}</pre>
+              )}
+
+              {filter === "new" && (
+                <div className="actions">
+                  <button
+                    className="action primary"
+                    onClick={() => tailor(j)}
+                  >
+                    Tailor cover letter
+                  </button>
+                  <a
+                    className="action ghost"
+                    href={j.canonical_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open job ↗
+                  </a>
+                  <button
+                    className="action applied"
+                    onClick={() => decide(j.canonical_url, "applied")}
+                  >
+                    ✓ Applied
+                  </button>
+                  <button
+                    className="action snoozed"
+                    onClick={() => decide(j.canonical_url, "snoozed")}
+                  >
+                    Snooze
+                  </button>
+                  <button
+                    className="action rejected"
+                    onClick={() => decide(j.canonical_url, "rejected")}
+                  >
+                    Not for me
+                  </button>
+                </div>
+              )}
             </div>
-            <div className="meta">
-              {j.company}
-              {j.location ? ` · ${j.location}` : ""} · {j.source}
+          );
+        })
+      )}
+
+      {tailoring && (
+        <div className="modalbg" onClick={() => setTailoring(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modalhead">
+              <div>Tailored cover letter</div>
+              <button className="close" onClick={() => setTailoring(null)}>
+                ✕
+              </button>
             </div>
-            {j.fit_reasoning && <div className="reasoning">{j.fit_reasoning}</div>}
-            {j.strengths && j.strengths.length > 0 && (
-              <div className="strengths">
-                <strong>Fit:</strong> {j.strengths.join(", ")}
-              </div>
-            )}
-            {j.gaps && j.gaps.length > 0 && (
-              <div className="gaps">
-                <strong>Gaps:</strong> {j.gaps.join(", ")}
-              </div>
-            )}
-            {filter === "new" && (
-              <div className="actions">
-                <button
-                  className="action applied"
-                  onClick={() => decide(j.canonical_url, "applied")}
-                >
-                  Mark applied
-                </button>
-                <button
-                  className="action snoozed"
-                  onClick={() => decide(j.canonical_url, "snoozed")}
-                >
-                  Snooze
-                </button>
-                <button
-                  className="action rejected"
-                  onClick={() => decide(j.canonical_url, "rejected")}
-                >
-                  Not for me
-                </button>
-              </div>
-            )}
+            <textarea className="tailorbox" value={tailorOut} readOnly />
+            <div className="modalfoot">
+              <button className="action primary" onClick={copyTailored}>
+                Copy to clipboard
+              </button>
+              <button className="action ghost" onClick={() => setTailoring(null)}>
+                Close
+              </button>
+            </div>
           </div>
-        ))
+        </div>
       )}
     </div>
   );

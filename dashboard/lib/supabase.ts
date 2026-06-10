@@ -25,6 +25,7 @@ export type Job = {
   company: string;
   title: string;
   location: string | null;
+  description: string | null;
   score: number;
   fit_reasoning: string | null;
   strengths: string[] | null;
@@ -32,4 +33,5 @@ export type Job = {
   hard_rejected: boolean;
   user_decision: "applied" | "snoozed" | "rejected" | null;
   first_seen_at: string;
+  last_scored_at: string | null;
 };
