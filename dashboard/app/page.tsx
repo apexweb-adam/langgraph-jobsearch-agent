@@ -25,6 +25,17 @@ function timeAgo(iso: string | null): string {
   return `${d}d ago`;
 }
 
+function formatSalary(j: Job): string | null {
+  if (j.salary_min && j.salary_max) {
+    if (j.salary_min === j.salary_max) {
+      return `$${Math.round(j.salary_min / 1000)}K`;
+    }
+    return `$${Math.round(j.salary_min / 1000)}K to $${Math.round(j.salary_max / 1000)}K`;
+  }
+  if (j.salary_text) return j.salary_text;
+  return null;
+}
+
 const CANDIDATE = process.env.NEXT_PUBLIC_CANDIDATE_NAME || "your";
 
 export default function Page() {
@@ -35,6 +46,10 @@ export default function Page() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [tailoring, setTailoring] = useState<string | null>(null);
   const [tailorOut, setTailorOut] = useState<string>("");
+  const [refreshState, setRefreshState] = useState<
+    "idle" | "starting" | "running" | "error"
+  >("idle");
+  const [refreshMessage, setRefreshMessage] = useState<string>("");
 
   async function load() {
     setLoading(true);
@@ -103,6 +118,28 @@ export default function Page() {
     } catch {}
   }
 
+  async function refresh() {
+    setRefreshState("starting");
+    setRefreshMessage("Kicking off a fresh discovery cycle…");
+    try {
+      const res = await fetch("/api/refresh", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setRefreshState("error");
+        setRefreshMessage(data.error || "Refresh failed.");
+        return;
+      }
+      setRefreshState("running");
+      setRefreshMessage(
+        data.message ||
+          "Refresh started. New roles usually appear in about 10 minutes. You can keep using the dashboard while it runs."
+      );
+    } catch (e) {
+      setRefreshState("error");
+      setRefreshMessage(String(e));
+    }
+  }
+
   const filtered = useMemo(() => {
     if (band === "all") return jobs;
     if (band === "great") return jobs.filter((j) => j.score >= 80);
@@ -139,10 +176,25 @@ export default function Page() {
           </div>
         </div>
         <div className="last">
+          <button
+            className={`refresh-btn ${refreshState !== "idle" ? "busy" : ""}`}
+            onClick={refresh}
+            disabled={refreshState !== "idle" && refreshState !== "error"}
+          >
+            {refreshState === "starting"
+              ? "Starting…"
+              : refreshState === "running"
+              ? "Refresh running…"
+              : "↻ Refresh now"}
+          </button>
           <div className="chip">Last refresh: {lastRefresh}</div>
-          <div className="chip subtle">Next refresh: tomorrow 9 AM ET</div>
+          <div className="chip subtle">Auto-refresh every 6 hours</div>
         </div>
       </header>
+
+      {refreshMessage && (
+        <div className={`refresh-banner ${refreshState}`}>{refreshMessage}</div>
+      )}
 
       <div className="controls">
         {(["new", "applied", "snoozed", "all"] as Filter[]).map((f) => (
@@ -193,8 +245,8 @@ export default function Page() {
         <div className="empty">
           <strong>No roles in this view yet.</strong>
           <div style={{ marginTop: 6, fontSize: 13 }}>
-            The discovery agent refreshes once a day. New matches will appear
-            here automatically.
+            The pipeline auto-refreshes every six hours. You can also kick off
+            a fresh cycle now with the Refresh button above.
           </div>
         </div>
       ) : (
@@ -217,6 +269,9 @@ export default function Page() {
                 <strong>{j.company}</strong>
                 {j.location ? ` · ${j.location}` : ""}
                 <span className="src"> · {j.source}</span>
+                {formatSalary(j) && (
+                  <span className="salary"> · 💵 {formatSalary(j)}</span>
+                )}
               </div>
               {j.fit_reasoning && <div className="reasoning">{j.fit_reasoning}</div>}
               <div className="tags">

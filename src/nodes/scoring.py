@@ -204,6 +204,17 @@ def scoring_node(state: GraphState) -> GraphState:
     print(f"  [scoring] {len(jobs)} jobs (pre-filter -> Gemini -> post-filter)")
     llm = _llm()
 
+    # Cheap deterministic salary extraction. Runs on every job (even hard-
+    # rejected ones, since salary is still useful on the dashboard for the
+    # "applied" view). The LLM scorer never sees this; it judges salary fit
+    # from the JD text directly via the prompt's salary_floor anchor.
+    from ..salary import extract_salary
+    for j in jobs:
+        text, lo, hi = extract_salary(j.description or "")
+        j.salary_text = text
+        j.salary_min = lo
+        j.salary_max = hi
+
     out: list[ScoredJob] = []
     for j in jobs:
         rejected, reason = _pre_filter(j, profile)
@@ -220,5 +231,7 @@ def scoring_node(state: GraphState) -> GraphState:
     out.sort(key=lambda s: s.score, reverse=True)
     pre_blocked = sum(1 for s in out if s.hard_rejected)
     high = sum(1 for s in out if s.score >= 70)
-    print(f"  [scoring] {high} high-fit (>=70), {pre_blocked} hard-rejected")
+    with_sal = sum(1 for s in out if s.job.salary_min)
+    print(f"  [scoring] {high} high-fit (>=70), {pre_blocked} hard-rejected, "
+          f"{with_sal} with salary parsed")
     return {"scored": out}

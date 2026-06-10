@@ -108,6 +108,20 @@ def _dashboard_mode(state: GraphState) -> GraphState:
 
     n = store.upsert(scored)
     print(f"  [approval] supabase upsert: {n} rows (dashboard now has them)")
+
+    # Fire email alert for newly-seen Great-fit roles. We pass in URLs that
+    # have already been alerted on (digest_sent_at is non-null) so we don't
+    # spam the candidate on every refresh. Whatever notify_great_fits()
+    # returns gets stamped back.
+    try:
+        from ..sinks.email_alerts import notify_great_fits
+        already = store.get_digest_sent_urls()
+        alerted_urls = notify_great_fits(scored, already)
+        if alerted_urls:
+            store.mark_digest_sent(alerted_urls)
+    except Exception as e:
+        print(f"  [email] alert path errored (non-fatal): {e}")
+
     return {"digest_sent": False, "rows_upserted": n}
 
 

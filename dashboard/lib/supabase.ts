@@ -26,6 +26,9 @@ export type Job = {
   title: string;
   location: string | null;
   description: string | null;
+  salary_text: string | null;
+  salary_min: number | null;
+  salary_max: number | null;
   score: number;
   fit_reasoning: string | null;
   strengths: string[] | null;

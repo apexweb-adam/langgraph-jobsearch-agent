@@ -99,6 +99,9 @@ class SupabaseStore:
                 "gaps": s.gaps,
                 "hard_rejected": bool(s.hard_rejected),
                 "hard_rejected_reason": s.hard_rejected_reason or None,
+                "salary_text": s.job.salary_text or None,
+                "salary_min": s.job.salary_min,
+                "salary_max": s.job.salary_max,
                 "last_scored_at": datetime.now(timezone.utc).isoformat(),
             }
             for s in scored
@@ -113,3 +116,47 @@ class SupabaseStore:
         except Exception as e:
             print(f"  [supabase] upsert failed: {e}")
             return 0
+
+    def get_digest_sent_urls(self) -> set[str]:
+        """URLs that have already received an alert email.
+
+        Used to avoid double-notifying on every re-scoring pass.
+        """
+        if not self.enabled:
+            return set()
+        try:
+            r = self._client.get(
+                f"/{self.table}",
+                params={
+                    "select": "canonical_url",
+                    "digest_sent_at": "not.is.null",
+                },
+            )
+            r.raise_for_status()
+            return {row["canonical_url"] for row in r.json()}
+        except Exception as e:
+            print(f"  [supabase] get_digest_sent_urls failed: {e}")
+            return set()
+
+    def mark_digest_sent(self, urls: list[str]) -> int:
+        """Stamp digest_sent_at on the supplied URLs."""
+        if not self.enabled or not urls:
+            return 0
+        stamp = datetime.now(timezone.utc).isoformat()
+        n = 0
+        try:
+            # PostgREST supports `in.(...)` filters but quoting URLs with
+            # commas/special chars is annoying; one PATCH per URL is fine
+            # at this scale (we alert on a handful of rows per run).
+            for url in urls:
+                r = self._client.patch(
+                    f"/{self.table}",
+                    content=json.dumps({"digest_sent_at": stamp}),
+                    params={"canonical_url": f"eq.{url}"},
+                )
+                r.raise_for_status()
+                n += 1
+            return n
+        except Exception as e:
+            print(f"  [supabase] mark_digest_sent failed: {e}")
+            return n

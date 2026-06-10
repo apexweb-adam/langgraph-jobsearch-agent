@@ -21,6 +21,12 @@ class Job(BaseModel):
     url: str
     description: str = ""
     posted_at: str | None = None
+    # Extracted in the scoring node from the description text. We persist
+    # both a human-readable original ("$120,000 to $150,000 USD") and the
+    # parsed min/max in whole dollars so the dashboard can render a chip.
+    salary_text: str = ""
+    salary_min: int | None = None
+    salary_max: int | None = None
 
 
 class ScoredJob(BaseModel):
