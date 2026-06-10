@@ -67,7 +67,15 @@ headings.
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.4, maxOutputTokens: 1200 },
+      // Gemini 2.5 Flash spends "thinking" tokens out of maxOutputTokens
+      // before producing visible text. Set a generous ceiling so the model
+      // can think AND still write a full 350-word letter without truncation.
+      // thinkingBudget=512 leaves plenty of headroom for the visible reply.
+      generationConfig: {
+        temperature: 0.5,
+        maxOutputTokens: 4096,
+        thinkingConfig: { thinkingBudget: 512 },
+      },
     }),
   });
 
@@ -79,9 +87,28 @@ headings.
     );
   }
   const j = await r.json();
-  const text =
-    j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ||
-    "Gemini returned an empty response.";
+  const cand = j?.candidates?.[0];
+  const finishReason = cand?.finishReason;
+  let text = (cand?.content?.parts?.[0]?.text || "").trim();
+
+  if (!text) {
+    return NextResponse.json(
+      {
+        error:
+          `Gemini returned no text (finishReason=${finishReason ?? "unknown"}). ` +
+          "Try again, or open the job and paste the description manually.",
+      },
+      { status: 500 }
+    );
+  }
+
+  // If Gemini ran out of budget mid-sentence we still want to hand the
+  // candidate SOMETHING usable, so we surface a warning instead of erroring.
+  if (finishReason && finishReason !== "STOP") {
+    text =
+      text +
+      `\n\n(Note: model stopped with reason "${finishReason}". You may want to regenerate.)`;
+  }
 
   // Strip any em/en dashes that slipped through, per the candidate's hard rule.
   const cleaned = text.replace(/—/g, ", ").replace(/–/g, " to ");
