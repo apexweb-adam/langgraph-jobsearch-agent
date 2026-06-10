@@ -81,12 +81,35 @@ Return ONLY the JSON object."""
 
 # ── Deterministic gates ─────────────────────────────────────────────────────
 
+import re
+
+
+def _term_in(haystack_orig: str, term: str) -> bool:
+    """Word-boundary match. Used instead of plain substring matching so that
+    short reject terms don't blow up:
+
+    - "intern" should match "Internship" and "Marketing Intern" but NOT
+      "Internal Audit Manager".
+    - "IT" should match "IT Operations" but NOT the pronoun "it" in "it is".
+    - "finance" should match "Finance Director" but NOT "refinance".
+
+    For terms of 1-2 characters we require an exact-case match against the
+    original string (so "IT" only matches uppercase "IT", not "it"). For
+    longer terms we use case-insensitive word-boundary regex.
+    """
+    if not term or not haystack_orig:
+        return False
+    if len(term) <= 2:
+        # Case-sensitive on the original to require uppercase short abbreviations
+        return bool(re.search(rf"\b{re.escape(term)}\b", haystack_orig))
+    return bool(re.search(rf"\b{re.escape(term)}\b", haystack_orig, re.IGNORECASE))
+
+
 def _pre_filter(job: Job, profile: Profile) -> tuple[bool, str]:
     """Return (rejected, reason). Runs BEFORE any LLM call. Saves API spend."""
-    title_low = job.title.lower()
-    for term in profile.reject_titles_lower():
-        if term and term in title_low:
-            return True, f"title contains rejected term '{term}'"
+    for term in profile.reject_titles:
+        if _term_in(job.title, term):
+            return True, f"title contains rejected term '{term.lower()}'"
 
     if profile.remote_only:
         loc_low = (job.location or "").lower()
@@ -102,20 +125,18 @@ def _pre_filter(job: Job, profile: Profile) -> tuple[bool, str]:
 
 def _post_filter(scored: ScoredJob, profile: Profile) -> ScoredJob:
     """Override the LLM if it scored something we hard-reject. Runs AFTER scoring."""
-    title_low = scored.job.title.lower()
-    desc_low = scored.job.description.lower()
-
-    for term in profile.reject_titles_lower():
-        if term and term in title_low:
+    for term in profile.reject_titles:
+        if _term_in(scored.job.title, term):
             scored.hard_rejected = True
-            scored.hard_rejected_reason = f"title contains rejected term '{term}'"
+            scored.hard_rejected_reason = f"title contains rejected term '{term.lower()}'"
             scored.score = 0
             return scored
 
-    for term in [i.lower() for i in profile.rejected_industries]:
-        if term and term in desc_low[:2000]:
+    desc_first2k = scored.job.description[:2000] if scored.job.description else ""
+    for term in profile.rejected_industries:
+        if _term_in(desc_first2k, term):
             scored.hard_rejected = True
-            scored.hard_rejected_reason = f"description hits rejected industry '{term}'"
+            scored.hard_rejected_reason = f"description hits rejected industry '{term.lower()}'"
             scored.score = min(scored.score, 20)
             return scored
 

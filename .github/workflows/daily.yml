@@ -1,0 +1,70 @@
+name: Daily job discovery
+
+# Runs the full LangGraph pipeline (Greenhouse + Lever + JazzHR + Apify Indeed)
+# once a day at 13:00 UTC (~9 AM US Eastern). Results land in Supabase, which
+# the Next.js dashboard reads.
+#
+# Why GitHub Actions instead of running locally: the full pipeline takes
+# 25-30 minutes (4 Apify Indeed actors x 5-7 min sequential + Gemini scoring
+# on ~125 jobs). GitHub-hosted runners have a 6-hour job timeout, so this fits
+# easily without the shell-harness kill we hit on local laptops.
+
+on:
+  schedule:
+    - cron: "0 13 * * *"        # daily 13:00 UTC
+  workflow_dispatch:             # allow manual trigger from the Actions tab
+
+# Avoid two concurrent runs racing on the same Supabase table
+concurrency:
+  group: daily-job-discovery
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60          # ceiling well above expected 25-30 min
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: pip install --upgrade pip uv
+
+      - name: Install project deps
+        run: uv pip install --system -e .
+
+      - name: Stage candidate profile from Actions secret
+        env:
+          DIAMOND_PROFILE_YAML: ${{ secrets.DIAMOND_PROFILE_YAML }}
+        run: |
+          mkdir -p data
+          printf '%s' "$DIAMOND_PROFILE_YAML" > data/profile.yaml
+          # Sanity: just print the candidate name + first 3 lines so logs prove
+          # the profile loaded without dumping the whole yaml.
+          head -3 data/profile.yaml || true
+
+      - name: Run discovery + scoring + Supabase upsert
+        env:
+          GOOGLE_API_KEY:            ${{ secrets.GOOGLE_API_KEY }}
+          APIFY_TOKEN:               ${{ secrets.APIFY_TOKEN }}
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_TABLE:            langgraph_jobs
+          APPROVAL_MODE:             dashboard
+          PROFILE_PATH:              ./data/profile.yaml
+        run: python run.py
+
+      - name: Upload logs as artifact (for postmortem on failures)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-logs-${{ github.run_id }}
+          path: |
+            data/*.db
+          retention-days: 7
+          if-no-files-found: ignore
