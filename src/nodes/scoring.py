@@ -111,6 +111,14 @@ def _pre_filter(job: Job, profile: Profile) -> tuple[bool, str]:
         if _term_in(job.title, term):
             return True, f"title contains rejected term '{term.lower()}'"
 
+    # Hard-blocked companies. Substring match on the company name handles
+    # variations like "American Red Cross", "American Red Cross of Greater
+    # Atlanta", etc. with a single rule.
+    company_low = (job.company or "").lower()
+    for blocked in (profile.reject_companies or []):
+        if blocked.lower() in company_low:
+            return True, f"company '{job.company}' is on the candidate's hard-block list ({blocked})"
+
     if profile.remote_only:
         loc_low = (job.location or "").lower()
         desc_low = (job.description or "")[:1000].lower()

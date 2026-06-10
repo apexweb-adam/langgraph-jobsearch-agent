@@ -75,6 +75,12 @@ class Profile(BaseModel):
     # Companies to monitor
     target_companies: TargetCompanies
 
+    # Hard-blocked companies. Case-insensitive substring match against the
+    # job's company name in the pre-filter. Used for "I will never work
+    # there again" rules (e.g. Diamond explicitly excluded American Red
+    # Cross, federal jobs, local government).
+    reject_companies: list[str] = Field(default_factory=list)
+
     # Free-text resume + cover letter (filled by parser or by hand)
     resume_text: str = ""
     cover_letter_text: str = ""
