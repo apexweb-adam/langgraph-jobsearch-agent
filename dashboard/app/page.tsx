@@ -45,7 +45,12 @@ export default function Page() {
       .order("score", { ascending: false })
       .limit(500);
     if (filter === "new") {
-      q = q.is("user_decision", null).gte("score", 50);
+      // Show every scored, non-rejected role the candidate hasn't decided on.
+      // The score-band sub-filter (Great / Good / Maybe / All) gives in-view
+      // control without hiding borderline matches that might still be worth
+      // a click. Previous threshold of >=50 was too aggressive in the early
+      // days when the pipeline was thin.
+      q = q.is("user_decision", null);
     } else if (filter === "applied") {
       q = q.eq("user_decision", "applied");
     } else if (filter === "snoozed") {
@@ -102,14 +107,14 @@ export default function Page() {
     if (band === "all") return jobs;
     if (band === "great") return jobs.filter((j) => j.score >= 80);
     if (band === "good") return jobs.filter((j) => j.score >= 70 && j.score < 80);
-    return jobs.filter((j) => j.score >= 50 && j.score < 70);
+    return jobs.filter((j) => j.score >= 40 && j.score < 70);
   }, [jobs, band]);
 
   const counts = useMemo(() => {
     return {
       great: jobs.filter((j) => j.score >= 80).length,
       good: jobs.filter((j) => j.score >= 70 && j.score < 80).length,
-      maybe: jobs.filter((j) => j.score >= 50 && j.score < 70).length,
+      maybe: jobs.filter((j) => j.score >= 40 && j.score < 70).length,
     };
   }, [jobs]);
 
@@ -176,7 +181,7 @@ export default function Page() {
               className={`band maybe ${band === "maybe" ? "active" : ""}`}
               onClick={() => setBand("maybe")}
             >
-              Maybe 50–69 ({counts.maybe})
+              Maybe 40 to 69 ({counts.maybe})
             </button>
           </div>
         )}

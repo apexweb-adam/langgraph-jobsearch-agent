@@ -11,7 +11,10 @@ name: Daily job discovery
 
 on:
   schedule:
-    - cron: "0 13 * * *"        # daily 13:00 UTC
+    # Every 6 hours: 00:00, 06:00, 12:00, 18:00 UTC. That's 4 refreshes per
+    # day, which keeps Apify residential-proxy spend reasonable while giving
+    # the candidate a much fresher pipeline than once-daily.
+    - cron: "0 0,6,12,18 * * *"
   workflow_dispatch:             # allow manual trigger from the Actions tab
 
 # Avoid two concurrent runs racing on the same Supabase table

@@ -154,22 +154,41 @@ async def fetch_all(apify_sources: list[dict]) -> list[Job]:
         print("  [apify] APIFY_TOKEN not set, skipping all Apify sources")
         return []
 
+    # Run actors in parallel instead of sequentially. With 4 actors and a
+    # 15-minute per-run poll ceiling, sequential execution can hit 30+ minutes
+    # wall time and fall over on the slower runs. asyncio.gather keeps total
+    # wall time at the SLOWEST single actor instead of the sum.
+    import asyncio
+
     async with httpx.AsyncClient(
         headers={"User-Agent": "langgraph-jobsearch-agent/0.1"}
     ) as c:
-        results: list[Job] = []
-        for src in apify_sources:
+
+        async def _one(src: dict) -> list[Job]:
             actor_id = src.get("actor_id")
             label = src.get("label", actor_id or "unknown")
             actor_input = src.get("input") or {}
             mapping = src.get("mapping") or {}
             if not actor_id:
-                continue
-            print(f"  [apify] running {actor_id} as '{label}'")
+                return []
+            print(f"  [apify] starting {actor_id} as '{label}'")
             items = await run_actor(c, token, actor_id, actor_input)
             print(f"  [apify] {label}: {len(items)} raw items")
+            out: list[Job] = []
             for it in items:
                 j = _normalize(it, mapping, label)
                 if j:
-                    results.append(j)
+                    out.append(j)
+            return out
+
+        groups = await asyncio.gather(
+            *[_one(src) for src in apify_sources],
+            return_exceptions=True,
+        )
+        results: list[Job] = []
+        for g in groups:
+            if isinstance(g, Exception):
+                print(f"  [apify] actor crashed: {g}")
+                continue
+            results.extend(g)
         return results
