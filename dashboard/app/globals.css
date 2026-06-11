@@ -42,6 +42,11 @@ html, body {
 }
 h1 { font-size: 28px; margin: 4px 0 6px; letter-spacing: -0.01em; }
 .sub { color: var(--muted); font-size: 14px; max-width: 640px; line-height: 1.45; }
+.screened {
+  margin-top: 10px; display: inline-block; font-size: 12.5px; font-weight: 600;
+  color: var(--accent); background: var(--accent-soft);
+  padding: 5px 12px; border-radius: 999px;
+}
 
 .last { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
 

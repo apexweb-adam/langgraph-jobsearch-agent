@@ -50,6 +50,7 @@ export default function Page() {
     "idle" | "starting" | "running" | "error"
   >("idle");
   const [refreshMessage, setRefreshMessage] = useState<string>("");
+  const [totalScreened, setTotalScreened] = useState<number | null>(null);
 
   async function load() {
     setLoading(true);
@@ -74,6 +75,13 @@ export default function Page() {
     if (error) console.error(error);
     setJobs(data ?? []);
     setLoading(false);
+
+    // Total rows ever screened, including the ones the rules filtered out.
+    // Surfacing this makes the curation legible: "we read 500 so you read 60".
+    const { count } = await supabase
+      .from(TABLE)
+      .select("*", { count: "exact", head: true });
+    if (typeof count === "number") setTotalScreened(count);
   }
 
   useEffect(() => {
@@ -173,6 +181,12 @@ export default function Page() {
             Scored against your background. Click a role to expand, draft a
             tailored cover letter, then mark applied or snooze.
           </div>
+          {totalScreened !== null && filter === "new" && (
+            <div className="screened">
+              {totalScreened.toLocaleString()} roles screened against your
+              rules so far. Only the ones worth your time make it here.
+            </div>
+          )}
         </div>
         <div className="last">
           <button
