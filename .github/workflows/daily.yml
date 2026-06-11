@@ -28,7 +28,7 @@ concurrency:
 jobs:
   discover:
     runs-on: ubuntu-latest
-    timeout-minutes: 60          # ceiling well above expected 25-30 min
+    timeout-minutes: 120         # 700+ jobs/run since JobSpy; parallel scoring needs headroom
 
     steps:
       - uses: actions/checkout@v4

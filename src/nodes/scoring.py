@@ -136,6 +136,15 @@ def _pre_filter(job: Job, profile: Profile) -> tuple[bool, str]:
             if "remote" not in desc_low and "remote" not in loc_low:
                 return True, "remote-only profile, posting requires on-site"
 
+    # Rejected industries, checked BEFORE the LLM call. This used to live in
+    # the post-filter, which meant we paid a Gemini call for jobs we were
+    # going to throw away anyway. With 700+ jobs per run, that is the
+    # difference between fitting the workflow timeout and not.
+    desc_first2k = (job.description or "")[:2000]
+    for term in profile.rejected_industries:
+        if _term_in(desc_first2k, term):
+            return True, f"description hits rejected industry '{term.lower()}'"
+
     return False, ""
 
 
@@ -231,7 +240,9 @@ def scoring_node(state: GraphState) -> GraphState:
         j.salary_min = lo
         j.salary_max = hi
 
+    # Split into hard-rejected (no LLM cost) and to-score buckets.
     out: list[ScoredJob] = []
+    to_score: list[Job] = []
     for j in jobs:
         rejected, reason = _pre_filter(j, profile)
         if rejected:
@@ -239,10 +250,19 @@ def scoring_node(state: GraphState) -> GraphState:
                 job=j, score=0, fit_reasoning=reason,
                 hard_rejected=True, hard_rejected_reason=reason,
             ))
-            continue
-        scored = _score_one(llm, j, profile)
-        scored = _post_filter(scored, profile)
-        out.append(scored)
+        else:
+            to_score.append(j)
+
+    # Score concurrently. Gemini Flash happily takes 8 parallel requests and
+    # each call is network-bound, so threads (not processes) are the right
+    # tool. 700 sequential calls blew through the workflow's 60-minute
+    # timeout; 8-wide this finishes in under 10 minutes.
+    from concurrent.futures import ThreadPoolExecutor
+    print(f"  [scoring] {len(to_score)} jobs to LLM ({len(out)} pre-rejected without LLM cost)")
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        scored_list = list(ex.map(lambda j: _score_one(llm, j, profile), to_score))
+    for scored in scored_list:
+        out.append(_post_filter(scored, profile))
 
     out.sort(key=lambda s: s.score, reverse=True)
     pre_blocked = sum(1 for s in out if s.hard_rejected)
