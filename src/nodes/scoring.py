@@ -51,8 +51,16 @@ Scoring rubric:
 - 90+ : near-perfect fit, candidate should apply today
 - 70-89: strong fit with minor gaps
 - 50-69: plausible fit but stretch
-- 30-49: weak fit, only if desperate
-- <30 : do not apply
+- 40-49: same professional function, multiple real gaps, still worth a look
+- <40 : wrong function or wrong level, do not surface
+
+Calibration anchor: if the role is in the candidate's core FUNCTION
+(program leadership, volunteer engagement, partnerships, community impact
+at a mission-driven organization) and at roughly the right seniority, the
+score belongs at 45 or higher even when several specifics are missing.
+Reserve sub-40 for roles in a different function (sales, engineering,
+fundraising-only, data, admin) or clearly wrong level. When torn between
+two bands, pick the higher one; the human reviews everything above 40.
 
 Weight: target_titles match (heavy), skills overlap (heavy), seniority (medium),
 location/remote compatibility (medium), industry (light)."""
