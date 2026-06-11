@@ -226,7 +226,7 @@ export default function Page() {
               className={`band good ${band === "good" ? "active" : ""}`}
               onClick={() => setBand("good")}
             >
-              Good 70–79 ({counts.good})
+              Good 70 to 79 ({counts.good})
             </button>
             <button
               className={`band maybe ${band === "maybe" ? "active" : ""}`}
