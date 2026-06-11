@@ -60,12 +60,11 @@ export default function Page() {
       .order("score", { ascending: false })
       .limit(500);
     if (filter === "new") {
-      // Show every scored, non-rejected role the candidate hasn't decided on.
-      // The score-band sub-filter (Great / Good / Maybe / All) gives in-view
-      // control without hiding borderline matches that might still be worth
-      // a click. Previous threshold of >=50 was too aggressive in the early
-      // days when the pipeline was thin.
-      q = q.is("user_decision", null);
+      // Show undecided roles scoring 40+. Below 40 is consistently noise
+      // (wrong function, wrong seniority) and burying the queue in it makes
+      // the dashboard feel broken. The band sub-filter handles focus above
+      // that line.
+      q = q.is("user_decision", null).gte("score", 40);
     } else if (filter === "applied") {
       q = q.eq("user_decision", "applied");
     } else if (filter === "snoozed") {
