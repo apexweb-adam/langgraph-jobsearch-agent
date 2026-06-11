@@ -60,7 +60,11 @@ jobs:
           SUPABASE_TABLE:            langgraph_jobs
           APPROVAL_MODE:             dashboard
           PROFILE_PATH:              ./data/profile.yaml
-        run: python run.py
+          PYTHONUNBUFFERED:          "1"
+        # -u disables stdout buffering so progress lines flush in real time
+        # instead of going dark for the whole 30+ minute run. Made debugging
+        # the multi-actor hang much easier.
+        run: python -u run.py
 
       - name: Upload logs as artifact (for postmortem on failures)
         if: always()
