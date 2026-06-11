@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 
 from ..state import GraphState, Job
-from ..sources import greenhouse, lever, jazzhr, apify
+from ..sources import greenhouse, lever, jazzhr, apify, jobspy_source
 
 
 def _dedupe(jobs: list[Job]) -> list[Job]:
@@ -32,10 +32,16 @@ async def _fetch_all(profile) -> list[Job]:
         lever.fetch_all(tc.lever),
         jazzhr.fetch_all(tc.jazzhr),
         apify.fetch_all(apify_inputs),
+        jobspy_source.fetch_all(
+            profile.jobspy_searches,
+            sites=profile.jobspy_sites,
+            wanted=profile.jobspy_results_per_search,
+            hours_old=profile.jobspy_hours_old,
+        ),
         return_exceptions=True,
     )
     out: list[Job] = []
-    for name, r in zip(("greenhouse", "lever", "jazzhr", "apify"), results):
+    for name, r in zip(("greenhouse", "lever", "jazzhr", "apify", "jobspy"), results):
         if isinstance(r, Exception):
             print(f"  [discovery] {name} crashed: {r}")
             continue
@@ -49,7 +55,8 @@ def discovery_node(state: GraphState) -> GraphState:
     tc = profile.target_companies
     print(
         f"  [discovery] greenhouse={len(tc.greenhouse)} lever={len(tc.lever)} "
-        f"jazzhr={len(tc.jazzhr)} apify={len(tc.apify)}"
+        f"jazzhr={len(tc.jazzhr)} apify={len(tc.apify)} "
+        f"jobspy_searches={len(profile.jobspy_searches)}"
     )
     jobs = asyncio.run(_fetch_all(profile))
     deduped = _dedupe(jobs)

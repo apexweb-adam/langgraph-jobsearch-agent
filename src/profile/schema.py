@@ -81,6 +81,13 @@ class Profile(BaseModel):
     # Cross, federal jobs, local government).
     reject_companies: list[str] = Field(default_factory=list)
 
+    # Free multi-board search terms (python-jobspy: Indeed + LinkedIn +
+    # Google Jobs, no Apify credits). Each term is one search per site.
+    jobspy_searches: list[str] = Field(default_factory=list)
+    jobspy_sites: list[str] = Field(default_factory=lambda: ["indeed", "linkedin", "google"])
+    jobspy_results_per_search: int = 20
+    jobspy_hours_old: int = 336
+
     # Free-text resume + cover letter (filled by parser or by hand)
     resume_text: str = ""
     cover_letter_text: str = ""
