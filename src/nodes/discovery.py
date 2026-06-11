@@ -11,14 +11,30 @@ from ..state import GraphState, Job
 from ..sources import greenhouse, lever, jazzhr, apify, jobspy_source
 
 
+def _norm(s: str) -> str:
+    """Normalize for fuzzy company+title matching: lowercase, collapse
+    whitespace, strip common posting suffixes like "- Remote"."""
+    import re
+    s = (s or "").lower().strip()
+    s = re.sub(r"\s*[-–|]\s*(remote|hybrid|us|usa|united states).*$", "", s)
+    s = re.sub(r"[^a-z0-9 ]", "", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
 def _dedupe(jobs: list[Job]) -> list[Job]:
-    seen: set[str] = set()
+    """Two-level dedup. URL catches exact reposts; normalized company+title
+    catches the same posting syndicated across boards (Indeed vs LinkedIn vs
+    the company ATS all have different URLs for one job)."""
+    seen_urls: set[str] = set()
+    seen_ct: set[str] = set()
     out: list[Job] = []
     for j in jobs:
-        key = (j.url or f"{j.source}:{j.source_id}").lower()
-        if key in seen:
+        url_key = (j.url or f"{j.source}:{j.source_id}").lower()
+        ct_key = f"{_norm(j.company)}::{_norm(j.title)}"
+        if url_key in seen_urls or (ct_key != "::" and ct_key in seen_ct):
             continue
-        seen.add(key)
+        seen_urls.add(url_key)
+        seen_ct.add(ct_key)
         out.append(j)
     return out
 
