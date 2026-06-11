@@ -93,7 +93,7 @@ export default function Page() {
 
   async function tailor(j: Job) {
     setTailoring(j.canonical_url);
-    setTailorOut("Generating a tailored cover letter — about 10 seconds…");
+    setTailorOut("Generating a tailored cover letter, about 10 seconds…");
     try {
       const res = await fetch("/api/tailor", {
         method: "POST",
