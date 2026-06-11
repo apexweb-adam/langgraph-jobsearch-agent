@@ -11,11 +11,14 @@ name: Daily job discovery
 
 on:
   schedule:
-    # Every 6 hours: 00:00, 06:00, 12:00, 18:00 UTC. That's 4 refreshes per
-    # day, which keeps Apify residential-proxy spend reasonable while giving
-    # the candidate a much fresher pipeline than once-daily.
-    - cron: "0 0,6,12,18 * * *"
-  workflow_dispatch:             # allow manual trigger from the Actions tab
+    # Cost-tiered refresh. Greenhouse + Lever are plain free HTTP APIs, so
+    # they refresh 4x/day. Indeed via Apify burns residential-proxy credits
+    # (Playwright + detail pages), so it runs ONCE a day at 12:00 UTC.
+    # The two cron strings are distinguished in the env block below via
+    # github.event.schedule.
+    - cron: "0 12 * * *"         # full run: free sources + Apify Indeed
+    - cron: "0 0,6,18 * * *"     # cheap run: free sources only (no Apify)
+  workflow_dispatch:             # manual trigger = full run (incl. Apify)
 
 # Avoid two concurrent runs racing on the same Supabase table
 concurrency:
@@ -54,7 +57,11 @@ jobs:
       - name: Run discovery + scoring + Supabase upsert
         env:
           GOOGLE_API_KEY:            ${{ secrets.GOOGLE_API_KEY }}
-          APIFY_TOKEN:               ${{ secrets.APIFY_TOKEN }}
+          # APIFY_TOKEN is only injected on the 12:00 UTC full run and on
+          # manual dispatches. The cheap 6-hourly crons get an empty token,
+          # and src/sources/apify.py skips all Apify sources when the token
+          # is unset — so those runs cost zero Apify credits.
+          APIFY_TOKEN:               ${{ (github.event_name == 'workflow_dispatch' || github.event.schedule == '0 12 * * *') && secrets.APIFY_TOKEN || '' }}
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_TABLE:            langgraph_jobs
