@@ -113,6 +113,91 @@ def _term_in(haystack_orig: str, term: str) -> bool:
     return bool(re.search(rf"\b{re.escape(term)}\b", haystack_orig, re.IGNORECASE))
 
 
+# Remote markers trusted in the LOCATION field, where they are reliable
+# (Indeed and LinkedIn put "Remote", "Remote, US" etc. straight in location).
+_REMOTE_LOC_MARKERS = (
+    "remote", "work from home", "wfh", "anywhere", "remote-first",
+    "distributed", "telecommute", "telework", "home-based", "home based",
+)
+
+# Strong remote phrases required in the DESCRIPTION to override a bound city
+# location. A bare "remote" is too weak: it matches "not a remote role",
+# "remote offices", "remotely related", and similar false positives.
+_REMOTE_DESC_PHRASES = (
+    "fully remote", "100% remote", "100 percent remote", "work from anywhere",
+    "work-from-anywhere", "this role is remote", "this position is remote",
+    "remote (us", "remote - us", "remote, us", "remote within the us",
+    "remote within the united states", "us-remote", "remote anywhere in the us",
+)
+
+# Location strings that are nationwide or ambiguous, not a specific city the
+# candidate would have to relocate to. Kept (let the scorer judge) rather than
+# rejected, because Indeed and LinkedIn frequently label genuinely remote US
+# roles this way.
+_NATIONWIDE_LOCS = (
+    "", "united states", "usa", "us", "u.s.", "u.s.a.", "nationwide",
+    "national", "various", "multiple locations", "multiple", "anywhere",
+)
+
+# Foreign location markers. The candidate's timezones are US only, so a role
+# anchored to one of these is out of scope even if it calls itself remote
+# (for example GiveDirectly and One Acre Fund roles based in East Africa).
+_FOREIGN_MARKERS = (
+    "kenya", "nigeria", "rwanda", "uganda", "tanzania", "ghana", "ethiopia",
+    "nairobi", "lagos", "kigali", "kampala", "india", "united kingdom",
+    "london", "england", "canada", "toronto", "australia", "germany",
+    "france", "netherlands", "amsterdam", "singapore", "philippines",
+    "mexico", "brazil", "south africa", "ireland", "dublin", "remote - global",
+    "remote, global", "global remote", "emea", "apac", "latam",
+)
+
+
+def _location_ok(job: Job, profile: Profile) -> tuple[bool, str]:
+    """For a remote-only, US-timezone candidate, decide if a posting is reachable.
+
+    Keep the job when: the LOCATION field shows a remote marker, OR it sits in
+    one of the candidate's geos (Atlanta GA), OR the location is nationwide or
+    ambiguous, OR a bound city is overridden by a strong remote phrase in the
+    description. Reject a foreign-anchored role outright, and reject a specific
+    US city that is neither in the geos nor backed by a strong remote phrase,
+    since that would require relocation.
+    """
+    loc = (job.location or "").strip().lower()
+    desc_head = (job.description or "")[:1500].lower()
+
+    # 0) Foreign-anchored: out of scope (US timezones only), even if "remote".
+    if any(m in loc for m in _FOREIGN_MARKERS):
+        return False, f"out of scope, foreign location: {job.location}"
+
+    # 1) Remote stated in the LOCATION field: keep.
+    if any(m in loc for m in _REMOTE_LOC_MARKERS):
+        return True, ""
+
+    # 2) In one of the candidate's preferred geos (Atlanta, Georgia, GA, etc).
+    geo_tokens: list[str] = []
+    for g in profile.geos:
+        gl = g.lower()
+        if "remote" in gl:
+            continue  # handled by the remote markers above
+        for tok in re.split(r"[ ,]+", gl):
+            if len(tok) >= 2:
+                geo_tokens.append(tok)
+    if loc and any(_term_in(loc, tok) for tok in geo_tokens):
+        return True, ""
+
+    # 3) Nationwide or ambiguous location: keep, let the scorer weigh it.
+    if loc in _NATIONWIDE_LOCS:
+        return True, ""
+
+    # 4) A specific bound city, kept ONLY if the JD strongly states remote.
+    if any(p in desc_head for p in _REMOTE_DESC_PHRASES):
+        return True, ""
+
+    # 5) Otherwise the role is location-bound: reject, relocation is off the table.
+    where = job.location or "unspecified"
+    return False, f"remote-only profile, posting is location-bound to {where}"
+
+
 def _pre_filter(job: Job, profile: Profile) -> tuple[bool, str]:
     """Return (rejected, reason). Runs BEFORE any LLM call. Saves API spend."""
     for term in profile.reject_titles:
@@ -128,13 +213,9 @@ def _pre_filter(job: Job, profile: Profile) -> tuple[bool, str]:
             return True, f"company '{job.company}' is on the candidate's hard-block list ({blocked})"
 
     if profile.remote_only:
-        loc_low = (job.location or "").lower()
-        desc_low = (job.description or "")[:1000].lower()
-        # Hard on-site signals in the first KB of the JD
-        onsite_signals = ("on-site", "onsite", "in-office", "in office", "must be located in")
-        if any(s in desc_low or s in loc_low for s in onsite_signals):
-            if "remote" not in desc_low and "remote" not in loc_low:
-                return True, "remote-only profile, posting requires on-site"
+        ok, reason = _location_ok(job, profile)
+        if not ok:
+            return True, reason
 
     # Rejected industries, checked BEFORE the LLM call. This used to live in
     # the post-filter, which meant we paid a Gemini call for jobs we were
