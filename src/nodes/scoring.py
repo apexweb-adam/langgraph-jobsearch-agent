@@ -174,13 +174,20 @@ def _location_ok(job: Job, profile: Profile) -> tuple[bool, str]:
         return True, ""
 
     # 2) In one of the candidate's preferred geos (Atlanta, Georgia, GA, etc).
+    #    Drop generic tokens like "metropolitan" and "area" so a geo such as
+    #    "Atlanta Metropolitan Area" does not match an unrelated "Springfield,
+    #    Massachusetts Metropolitan Area" or "Nashville (SoBro area)".
+    _GEO_STOPWORDS = {
+        "metropolitan", "area", "metro", "greater", "the", "of", "us",
+        "usa", "united", "states", "region", "county", "city", "and",
+    }
     geo_tokens: list[str] = []
     for g in profile.geos:
         gl = g.lower()
         if "remote" in gl:
             continue  # handled by the remote markers above
         for tok in re.split(r"[ ,]+", gl):
-            if len(tok) >= 2:
+            if len(tok) >= 2 and tok not in _GEO_STOPWORDS:
                 geo_tokens.append(tok)
     if loc and any(_term_in(loc, tok) for tok in geo_tokens):
         return True, ""
